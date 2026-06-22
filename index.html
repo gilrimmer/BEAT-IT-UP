@@ -2013,7 +2013,7 @@ function exportNotes() {
   const blob = new Blob([lines], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'eoy2026_timeline-V81.html';
+  a.download = 'eoy2026_timeline-V82.html';
   a.click();
 }
 
@@ -2886,74 +2886,77 @@ function closePublishModal() {
 
 async function publishToGitHub() {
   const token = document.getElementById('ghToken').value.trim();
-  if (!token) {
-    setPublishStatus('Please enter your GitHub token.', 'error');
-    return;
-  }
+  if (!token) { setPublishStatus('Please enter your GitHub token.', 'error'); return; }
 
   const saveToken = document.getElementById('saveToken').checked;
-  if (saveToken) {
-    localStorage.setItem('beatapp_gh_token', token);
-  } else {
-    localStorage.removeItem('beatapp_gh_token');
-  }
+  if (saveToken) localStorage.setItem('beatapp_gh_token', token);
+  else localStorage.removeItem('beatapp_gh_token');
 
   const btn = document.getElementById('publishBtn');
   btn.disabled = true;
-  setPublishStatus('Getting current file SHA…', '');
+  setPublishStatus('Connecting to GitHub…', '');
+
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'Content-Type': 'application/json'
+  };
 
   try {
-    // 1. Get current file SHA
+    // 1. Get current SHA
+    setPublishStatus('Getting file info…', '');
     const getRes = await fetch(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}?ref=${GITHUB_BRANCH}&t=${Date.now()}`,
-      { headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json', 'Cache-Control': 'no-cache' } }
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`,
+      { headers }
     );
-    if (!getRes.ok) throw new Error('Could not get file info: ' + getRes.status);
+
+    if (getRes.status === 401) throw new Error('Invalid token — check it and try again.');
+    if (getRes.status === 404) throw new Error('Repo or file not found — check repo name.');
+    if (!getRes.ok) throw new Error(`GitHub error ${getRes.status}`);
+
     const fileData = await getRes.json();
     const sha = fileData.sha;
 
-    setPublishStatus('Uploading…', '');
+    // 2. Encode HTML
+    setPublishStatus('Encoding…', '');
+    await new Promise(r => setTimeout(r, 10)); // let UI update
 
-    // 2. Get full HTML of this page
     const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
-    // Safe base64 encoding for large/unicode files
     const bytes = new TextEncoder().encode(html);
     let binary = '';
-    const chunkSize = 8192;
+    const chunkSize = 4096;
     for (let i = 0; i < bytes.length; i += chunkSize) {
       binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
     }
     const encoded = btoa(binary);
 
-    // 3. Push to GitHub
+    // 3. Push
+    setPublishStatus('Uploading…', '');
     const putRes = await fetch(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`,
       {
         method: 'PUT',
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json'
-        },
+        headers,
         body: JSON.stringify({
           message: 'Update from BEAT APP',
           content: encoded,
-          sha: sha,
+          sha,
           branch: GITHUB_BRANCH
         })
       }
     );
 
     if (!putRes.ok) {
-      const err = await putRes.json();
-      throw new Error(err.message || putRes.status);
+      const errData = await putRes.json().catch(() => ({}));
+      throw new Error(errData.message || `Upload failed: ${putRes.status}`);
     }
 
-    setPublishStatus('✓ Published! Live in ~1 min at gilrimmer.github.io/BEAT-IT-UP/', 'success');
+    setPublishStatus('✓ Published! Live in ~1 min', 'success');
     btn.disabled = false;
     setTimeout(closePublishModal, 3000);
 
-  } catch (err) {
+  } catch(err) {
     setPublishStatus('Error: ' + err.message, 'error');
     btn.disabled = false;
   }
