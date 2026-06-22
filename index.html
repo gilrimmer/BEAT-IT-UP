@@ -2819,6 +2819,42 @@ if (sessionStorage.getItem('beatapp_auth') === '1') {
 
 
 
+
+// ── TIMELINE ZOOM ─────────────────────────────────────────────────────────────
+(function() {
+  let beatWidth = 200; // default px
+  const MIN_WIDTH = 80;
+  const MAX_WIDTH = 400;
+
+  const track = document.querySelector('.phase-track');
+  if (!track) return;
+
+  track.addEventListener('wheel', e => {
+    if (!e.ctrlKey && !e.metaKey && e.deltaY !== 0) {
+      // Only zoom on vertical scroll without cmd/ctrl (those are browser zoom)
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -10 : 10;
+      beatWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, beatWidth + delta));
+      applyZoom();
+    }
+  }, { passive: false });
+
+  function applyZoom() {
+    document.querySelectorAll('.beat').forEach(b => {
+      b.style.width = beatWidth + 'px';
+      b.style.minWidth = beatWidth + 'px';
+    });
+    // Scale font sizes proportionally
+    const scale = beatWidth / 200;
+    document.querySelectorAll('.beat-title').forEach(el => {
+      el.style.fontSize = Math.round(13 * scale) + 'px';
+    });
+    document.querySelectorAll('.beat-desc').forEach(el => {
+      el.style.fontSize = Math.round(12 * scale) + 'px';
+    });
+  }
+})();
+
 </script>
 
 
