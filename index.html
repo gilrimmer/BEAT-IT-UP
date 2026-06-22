@@ -2521,7 +2521,7 @@ function ctxDeleteBeat() {
     document.addEventListener('mouseup', onUp);
   });
 
-  function rebuildNavigator() {
+  window.rebuildNavigator = function rebuildNavigator() {
     const navTrack = document.getElementById('navTrack');
     if (!navTrack) return;
     const phases = document.querySelectorAll('.phase');
@@ -2599,7 +2599,7 @@ function uploadFromSlot(btn) {
   }
   window.injectWatermarks = injectWatermarks;
   if (document.readyState !== 'loading') injectWatermarks();
-  else document.addEventListener('DOMContentLoaded', injectWatermarks);
+  else document.addEventListener('DOMContentLoaded', () => { injectWatermarks(); rebuildNavigator(); });
 })();
 
 
