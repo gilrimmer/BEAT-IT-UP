@@ -1144,6 +1144,61 @@
     color: #ff6b6b; font-size: 12px; display: none;
   }
 
+
+  /* ── PUBLISH TO GITHUB ── */
+  #publishModal {
+    position: fixed; inset: 0; z-index: 99998;
+    background: rgba(0,0,0,0.7); display: none;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .publish-box {
+    background: #2b3a48; border-radius: 12px; padding: 28px;
+    width: 420px; display: flex; flex-direction: column; gap: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  .publish-box h3 {
+    color: #fff; font-size: 16px; font-weight: 800;
+    letter-spacing: .05em; margin: 0;
+  }
+  .publish-box p {
+    color: rgba(255,255,255,0.6); font-size: 12px; margin: 0; line-height: 1.5;
+  }
+  .publish-box input {
+    padding: 10px 12px; border-radius: 6px;
+    border: 2px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.08); color: #fff;
+    font-size: 13px; font-family: inherit; outline: none; width: 100%;
+    box-sizing: border-box;
+  }
+  .publish-box input:focus { border-color: #ffe600; }
+  .publish-box input::placeholder { color: rgba(255,255,255,0.3); }
+  .publish-row { display: flex; gap: 8px; }
+  .publish-btn-primary {
+    flex: 1; padding: 10px; border-radius: 6px; border: none;
+    background: #ffe600; color: #2b3a48; font-weight: 800;
+    font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+  .publish-btn-primary:hover { background: #ffd000; }
+  .publish-btn-primary:disabled { opacity: 0.5; cursor: wait; }
+  .publish-btn-cancel {
+    padding: 10px 16px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: transparent; color: rgba(255,255,255,0.7);
+    font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+  .publish-status {
+    font-size: 12px; text-align: center; min-height: 18px;
+  }
+  .publish-status.success { color: #90BE6D; }
+  .publish-status.error { color: #ff6b6b; }
+  .btn-publish {
+    padding: 6px 14px; border-radius: 6px; border: none;
+    background: #ffe600; color: #2b3a48; font-weight: 700;
+    font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .btn-publish:hover { background: #ffd000; }
+
 </style>
 </head>
 <body style="">
@@ -1161,6 +1216,7 @@
 <h1>EOY 2026 · Out of Time</h1>
 <span class="sub">Story timeline · working draft</span>
 <div class="header-right">
+<button class="btn-publish" onclick="openPublishModal()">↑ Publish</button>
 <button class="btn-sm" id="viewToggle" onclick="toggleView()">Storyboard view</button>
 <button class="btn-sm" onclick="exportChangelog()">Export changelog</button>
 <button class="btn-sm" onclick="saveFile()" style="font-weight:600;color:#fff;background:var(--teal);border-color:var(--teal)">⬇ Save file</button>
@@ -1957,7 +2013,7 @@ function exportNotes() {
   const blob = new Blob([lines], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'eoy2026_timeline-V78.html';
+  a.download = 'eoy2026_timeline-V79.html';
   a.click();
 }
 
@@ -2807,6 +2863,101 @@ if (sessionStorage.getItem('beatapp_auth') === '1') {
   });
 }
 
+
+// ── PUBLISH TO GITHUB ─────────────────────────────────────────────────────────
+const GITHUB_OWNER = 'gilrimmer';
+const GITHUB_REPO  = 'BEAT-IT-UP';
+const GITHUB_FILE  = 'index.html';
+const GITHUB_BRANCH = 'main';
+
+function openPublishModal() {
+  const saved = localStorage.getItem('beatapp_gh_token');
+  if (saved) {
+    document.getElementById('ghToken').value = saved;
+    document.getElementById('saveToken').checked = true;
+  }
+  document.getElementById('publishModal').style.display = 'flex';
+  document.getElementById('publishStatus').textContent = '';
+}
+
+function closePublishModal() {
+  document.getElementById('publishModal').style.display = 'none';
+}
+
+async function publishToGitHub() {
+  const token = document.getElementById('ghToken').value.trim();
+  if (!token) {
+    setPublishStatus('Please enter your GitHub token.', 'error');
+    return;
+  }
+
+  const saveToken = document.getElementById('saveToken').checked;
+  if (saveToken) {
+    localStorage.setItem('beatapp_gh_token', token);
+  } else {
+    localStorage.removeItem('beatapp_gh_token');
+  }
+
+  const btn = document.getElementById('publishBtn');
+  btn.disabled = true;
+  setPublishStatus('Getting current file SHA…', '');
+
+  try {
+    // 1. Get current file SHA
+    const getRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}?ref=${GITHUB_BRANCH}`,
+      { headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' } }
+    );
+    if (!getRes.ok) throw new Error('Could not get file info: ' + getRes.status);
+    const fileData = await getRes.json();
+    const sha = fileData.sha;
+
+    setPublishStatus('Uploading…', '');
+
+    // 2. Get full HTML of this page
+    const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+    const encoded = btoa(unescape(encodeURIComponent(html)));
+
+    // 3. Push to GitHub
+    const putRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: 'Update from BEAT APP',
+          content: encoded,
+          sha: sha,
+          branch: GITHUB_BRANCH
+        })
+      }
+    );
+
+    if (!putRes.ok) {
+      const err = await putRes.json();
+      throw new Error(err.message || putRes.status);
+    }
+
+    setPublishStatus('✓ Published! Live in ~1 min at gilrimmer.github.io/BEAT-IT-UP/', 'success');
+    btn.disabled = false;
+    setTimeout(closePublishModal, 3000);
+
+  } catch (err) {
+    setPublishStatus('Error: ' + err.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+function setPublishStatus(msg, type) {
+  const el = document.getElementById('publishStatus');
+  el.textContent = msg;
+  el.className = 'publish-status ' + (type || '');
+}
+
 </script>
 
 
@@ -2832,5 +2983,20 @@ if (sessionStorage.getItem('beatapp_auth') === '1') {
     </div>
   </div>
   <button onclick="document.getElementById('refLightbox').style.display='none'" style="position:absolute;top:16px;right:20px;background:rgba(255,255,255,0.15);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
+</div>
+<div id="publishModal">
+  <div class="publish-box">
+    <h3>↑ Publish to GitHub</h3>
+    <p>Your token is stored only in this browser. It goes directly to GitHub — never anywhere else.</p>
+    <input type="password" id="ghToken" placeholder="GitHub Personal Access Token (ghp_...)" />
+    <label style="display:flex;align-items:center;gap:8px;color:rgba(255,255,255,0.6);font-size:12px;cursor:pointer;">
+      <input type="checkbox" id="saveToken" style="width:auto;" /> Remember token in this browser
+    </label>
+    <div class="publish-row">
+      <button class="btn-publish-cancel publish-btn-cancel" onclick="closePublishModal()">Cancel</button>
+      <button class="publish-btn-primary" id="publishBtn" onclick="publishToGitHub()">Publish now</button>
+    </div>
+    <div class="publish-status" id="publishStatus"></div>
+  </div>
 </div>
 </body></html>
